@@ -37,7 +37,7 @@ type BodyResult struct {
 	err  error
 }
 
-func PDFImages(path string) (BodyResult, error) {
+func ConvertImagePDF(path string) (BodyResult, error) {
 	bodyResult := BodyResult{}
 
 	tmp, err := ioutil.TempDir("/tmp", "tmp-imgs-")
@@ -124,26 +124,13 @@ func PDFHasImage(path string) bool {
 
 // Convert PDF
 
-func ConvertPDF(r io.Reader) (BodyResult, MetaResult, error) {
+func ConvertTextPDF(path string) (BodyResult, MetaResult, error) {
 	metaResult := MetaResult{}
 	bodyResult := BodyResult{}
-
-	f, err := NewLocalFile(r, "/tmp", "sajari-convert-")
-	if err != nil {
-		return bodyResult, metaResult, fmt.Errorf("error creating local file: %v", err)
-	}
-	defer f.Done()
-
-	// Verify if pdf has images or is pdf only-text
-	if PDFHasImage(f.Name()) {
-		body, err := PDFImages(f.Name())
-		return body, metaResult, err
-	}
-
 	mr := make(chan MetaResult, 1)
 	go func() {
 		metaResult.meta = make(map[string]string)
-		metaStr, err := exec.Command("pdfinfo", f.Name()).Output()
+		metaStr, err := exec.Command("pdfinfo", path).Output()
 		if err != nil {
 			metaResult.err = err
 			mr <- metaResult
@@ -178,7 +165,7 @@ func ConvertPDF(r io.Reader) (BodyResult, MetaResult, error) {
 
 	br := make(chan BodyResult, 1)
 	go func() {
-		body, err := exec.Command("pdftotext", "-q", "-nopgbrk", "-enc", "UTF-8", "-eol", "unix", f.Name(), "-").Output()
+		body, err := exec.Command("pdftotext", "-q", "-nopgbrk", "-enc", "UTF-8", "-eol", "unix", path, "-").Output()
 		if err != nil {
 			bodyResult.err = err
 		}
@@ -189,4 +176,22 @@ func ConvertPDF(r io.Reader) (BodyResult, MetaResult, error) {
 	}()
 
 	return <-br, <-mr, nil
+}
+
+func ConvertPDF(r io.Reader) (string, map[string]string, error) {
+
+	f, err := NewLocalFile(r, "/tmp", "sajari-convert-")
+	if err != nil {
+		return bodyResult, metaResult, fmt.Errorf("error creating local file: %v", err)
+	}
+	defer f.Done()
+
+	// Verify if pdf has images or is pdf only-text
+	if PDFHasImage(f.Name()) {
+		bodyResult, err := ConvertImagePDF(f.Name())
+		return bodyResult.body, nil, nil
+	}
+	bodyResult, metaResult, err := ConvertTextPDF(f.Name())
+	return bodyResult.body, metaResult.meta, nil
+
 }
